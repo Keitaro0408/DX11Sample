@@ -4,17 +4,19 @@
 #include <windows.h>
 
 #include <d3d11.h>
+#include <d3dx11.h>	
 #include "vs.h"
 #include "ps.h"
 
 #pragma comment(lib, "d3d11.lib")
+#pragma comment(lib, "d3dx11.lib")
 #pragma comment(lib, "winmm.lib")
 
 #define CLIENT_WIDTH  1280
 #define CLIENT_HEIGHT  720
 #define GAME_FPS (1000/60)
 #define SAFE_RELEASE(p) { if(p) { (p)->Release(); (p)=NULL; } }
-#define VERTEXNUM 3 //ポリゴンの頂点数
+#define VERTEXNUM 4 //ポリゴンの頂点数
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
 
@@ -22,6 +24,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lpara
 struct Vertex3D {
 	float pos[3];	//x-y-z
 	float col[4];	//r-g-b-a
+	float tex[2];	//tu-tv
 };
 
 HRESULT CreateVertexShader2(TCHAR* csoName, ID3D11Device* pd3dDevice, ID3D11VertexShader** resVS){
@@ -95,12 +98,12 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 	ID3D11Device* pDevice = NULL;
 	ID3D11DeviceContext* pDeviceContext = NULL;
 
-	if (FAILED(D3D11CreateDevice(NULL, 
-								 D3D_DRIVER_TYPE_HARDWARE,
-								 NULL,0,NULL,0,
-								 D3D11_SDK_VERSION,
-								 &pDevice,NULL,
-								 &pDeviceContext)))
+	if (FAILED(D3D11CreateDevice(NULL,
+		D3D_DRIVER_TYPE_HARDWARE,
+		NULL, 0, NULL, 0,
+		D3D11_SDK_VERSION,
+		&pDevice, NULL,
+		&pDeviceContext)))
 	{
 		MessageBox(hWnd, "D3D11CreateDevice", "Err", MB_ICONSTOP);
 		return 1;
@@ -191,18 +194,42 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 	vp.MaxDepth = 1.0f;
 	pDeviceContext->RSSetViewports(1, &vp);
 
+	ID3D11RasterizerState* pRasterizerState = NULL;
+	D3D11_RASTERIZER_DESC RasterizerDesc = {
+		D3D11_FILL_SOLID, //D3D11_FILL_WIREFRAMEにするとワイヤフレームになる（かっこいい）
+		D3D11_CULL_NONE,	//ポリゴンの裏表を無くす
+		FALSE,
+		0,
+		0.0f,
+		FALSE,
+		FALSE,
+		FALSE,
+		FALSE,
+		FALSE
+	};
+	if (FAILED(pDevice->CreateRasterizerState(&RasterizerDesc, &pRasterizerState))){
+		MessageBox(hWnd, _T("CreateRasterizerState"), _T("Err"), MB_ICONSTOP);
+		return 1;
+	}
+
+	//ラスタライザーをコンテキストに設定
+	pDeviceContext->RSSetState(pRasterizerState);
+
 	// 頂点データ(三角ポリゴン1枚)
-	Vertex3D VectorData[VERTEXNUM] = 
+	Vertex3D VectorData[VERTEXNUM] =
 	{
-		{ { +0.0f, +0.5f, +0.5f }, { 0.0f, 1.0f, 1.0f, 1.0f } },
-		{ { +0.5f, -0.5f, +0.5f }, { 1.0f, 0.0f, 1.0f, 1.0f } },
-		{ { -0.5f, -0.5f, +0.5f }, { 1.0f, 1.0f, 0.0f, 1.0f } },
+		{ { -0.5f, +0.5f, +0.5f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.0f, 0.0f } },
+		{ { +0.5f, +0.5f, +0.5f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f } },
+		{ { -0.5f, -0.5f, +0.5f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0.0f, 1.0f } },
+		{ { +0.5f, -0.5f, +0.5f }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f } }
 	};
 
 	//頂点レイアウト
-	D3D11_INPUT_ELEMENT_DESC InElementDesc[] = {
+	D3D11_INPUT_ELEMENT_DESC InElementDesc[] = 
+	{
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 4 * 3, D3D11_INPUT_PER_VERTEX_DATA, 0 }
+		{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 4 * 3, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 4 * 3 + 4 * 4, D3D11_INPUT_PER_VERTEX_DATA, 0 }
 	};
 
 	//頂点バッファ作成
@@ -220,7 +247,8 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 	SubResourceData.SysMemSlicePitch = 0;
 
 	ID3D11Buffer* pBuffer;
-	if (FAILED(pDevice->CreateBuffer(&BufferDesc, &SubResourceData, &pBuffer))){
+	if (FAILED(pDevice->CreateBuffer(&BufferDesc, &SubResourceData, &pBuffer)))
+	{
 		MessageBox(hWnd, _T("CreateBuffer"), _T("Err"), MB_ICONSTOP);
 		return 1;
 	}
@@ -231,12 +259,13 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 	pDeviceContext->IASetVertexBuffers(0, 1, &pBuffer, &Strides, &Offsets);
 
 	//プリミティブ(ポリゴンの形状)をコンテキストに設定
-	pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	
+	pDeviceContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+
 
 	//頂点レイアウト作成
 	ID3D11InputLayout* pInputLayout = NULL;
-	if (FAILED(pDevice->CreateInputLayout(InElementDesc, ARRAYSIZE(InElementDesc), &g_vs_main, sizeof(g_vs_main), &pInputLayout))){
+	if (FAILED(pDevice->CreateInputLayout(InElementDesc, ARRAYSIZE(InElementDesc), &g_vs_main, sizeof(g_vs_main), &pInputLayout)))
+	{
 		MessageBox(hWnd, _T("CreateInputLayout"), _T("Err"), MB_ICONSTOP);
 		return 1;
 	}
@@ -246,11 +275,10 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 
 	//頂点シェーダー生成
 	ID3D11VertexShader* pVertexShader;
-	CreateVertexShader2("VertexShader.cso", pDevice, &pVertexShader);
-	//if (FAILED(pDevice->CreateVertexShader(&g_vs_main, sizeof(g_vs_main), NULL, &pVertexShader))){
-	//	MessageBox(hWnd, _T("CreateVertexShader"), _T("Err"), MB_ICONSTOP);
-	//	return 1;
-	//}
+	if (FAILED(pDevice->CreateVertexShader(&g_vs_main, sizeof(g_vs_main), NULL, &pVertexShader))){
+		MessageBox(hWnd, _T("CreateVertexShader"), _T("Err"), MB_ICONSTOP);
+		return 1;
+	}
 
 
 	//頂点シェーダーをコンテキストに設定
@@ -258,14 +286,26 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR szStr, INT iCmdSh
 
 	//ピクセルシェーダー生成
 	ID3D11PixelShader* pPixelShader;
-	if (FAILED(pDevice->CreatePixelShader(&g_ps_main, sizeof(g_ps_main), NULL, &pPixelShader))){
+	if (FAILED(pDevice->CreatePixelShader(&g_ps_main, sizeof(g_ps_main), NULL, &pPixelShader)))
+	{
 		MessageBox(hWnd, _T("CreateVertexShader"), _T("Err"), MB_ICONSTOP);
 		return 1;
 	}
-
 	//ピクセルシェーダーをコンテキストに設定
 	pDeviceContext->PSSetShader(pPixelShader, NULL, 0);
 
+	//テクスチャーを読み込んでいる
+	ID3D11ShaderResourceView* pShaderResourceView = NULL;
+	if (FAILED(D3DX11CreateShaderResourceViewFromFile(pDevice, _T("test.jpg"), NULL, NULL, &pShaderResourceView, NULL)))
+	{
+		MessageBox(hWnd, _T("D3DX11CreateShaderResourceViewFromFile"), _T("Err"), MB_ICONSTOP);
+		return 1;
+	}
+
+	//シェーダーに画像を渡す
+	ID3D11ShaderResourceView* pShaderResourceViews[] = { pShaderResourceView };
+	pDeviceContext->PSSetShaderResources(0, 1, pShaderResourceViews);
+	
 	// メッセージループ
 	ZeroMemory(&msg, sizeof(msg));
 	while (msg.message != WM_QUIT)

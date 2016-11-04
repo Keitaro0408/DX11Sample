@@ -14,7 +14,7 @@
 
 #define CLIENT_WIDTH  1280
 #define CLIENT_HEIGHT  720
-#define GAME_FPS (1000/60)
+#define GAME_FPS (1000/600)
 #define SAFE_RELEASE(p) { if(p) { (p)->Release(); (p)=NULL; } }
 #define VERTEXNUM 4 //ƒ|ƒŠƒSƒ“‚Ì’¸“_”
 
